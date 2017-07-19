@@ -27,6 +27,7 @@ import javax.websocket.WebSocketContainer;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.MappedByteBufferPool;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
+import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
@@ -51,7 +52,7 @@ public class JettyClientContainerProvider extends ContainerProvider
     private static boolean useServerContainer = false;
     private static Executor commonExecutor;
     private static ByteBufferPool commonBufferPool;
-    
+
     private static Object lock = new Object();
     
     /**
@@ -139,7 +140,15 @@ public class JettyClientContainerProvider extends ContainerProvider
             return null;
         }
     }
-    
+
+    public static void stop(WebSocketContainer container) throws Exception
+    {
+        if (container instanceof LifeCycle)
+        {
+            ((LifeCycle) container).stop();
+        }
+    }
+
     /**
      * Used by {@link ContainerProvider#getWebSocketContainer()} to get a new instance
      * of the Client {@link WebSocketContainer}.
@@ -193,12 +202,12 @@ public class JettyClientContainerProvider extends ContainerProvider
                     threadPool.setDaemon(true);
                     commonExecutor = threadPool;
                 }
-    
+
                 if (commonBufferPool == null)
                 {
                     commonBufferPool = new MappedByteBufferPool();
                 }
-    
+
                 SimpleContainerScope containerScope = new SimpleContainerScope(WebSocketPolicy.newClientPolicy(), commonBufferPool, commonExecutor, null);
                 ClientContainer clientContainer = new ClientContainer(containerScope);
                 
@@ -214,7 +223,7 @@ public class JettyClientContainerProvider extends ContainerProvider
                     // register JVM wide shutdown thread
                     ShutdownThread.register(clientContainer);
                 }
-                
+
                 if (!clientContainer.isStarted())
                 {
                     try

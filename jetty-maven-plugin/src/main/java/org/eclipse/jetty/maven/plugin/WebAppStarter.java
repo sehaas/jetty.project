@@ -22,9 +22,13 @@ package org.eclipse.jetty.maven.plugin;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
@@ -134,6 +138,15 @@ public class WebAppStarter extends AbstractLifeCycle
                 jars.add(new File(names[j].trim()));
             }
             _webApp.setWebInfLib(jars);
+        }
+
+        str = _props.getProperty( "projects.classes.dir" );
+        if (str != null && !"".equals(str.trim()))
+        {
+            List<File> classesDirectories = //
+                Arrays.stream(str.split( Pattern.quote("|") )) //
+                    .map( s -> Paths.get( s).toFile() ).collect( Collectors.toList() );
+            _webApp.getWebInfLib().addAll( classesDirectories );
         }
         
         

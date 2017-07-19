@@ -77,6 +77,19 @@ public class MavenWebInfConfiguration extends WebInfConfiguration
     }
 
     
+    
+
+    /** 
+     * @see org.eclipse.jetty.webapp.WebInfConfiguration#preConfigure(org.eclipse.jetty.webapp.WebAppContext)
+     */
+    public void preConfigure(WebAppContext context) throws Exception
+    {
+        super.preConfigure(context);
+        ((JettyWebAppContext)context).getDependentProjects()
+            .stream().forEach( resource ->  context.getMetaData().addWebInfJar( resource ) );
+
+    }
+    
 
     /**
      * Get the jars to examine from the files from which we have

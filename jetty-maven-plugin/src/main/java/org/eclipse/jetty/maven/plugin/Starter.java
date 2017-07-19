@@ -21,9 +21,19 @@ package org.eclipse.jetty.maven.plugin;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.net.URL;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Enumeration;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
@@ -109,17 +119,17 @@ public class Starter
         
         //apply a properties file that defines the things that we configure in the jetty:run plugin:
         // - the context path
-        String str = (String)props.get("context.path");
+        String str = props.getProperty("context.path");
         if (str != null)
             webApp.setContextPath(str);
         
         
         // - web.xml
-        str = (String)props.get("web.xml");
+        str = props.getProperty("web.xml");
         if (str != null)
             webApp.setDescriptor(str); 
         
-        str = (String)props.get("quickstart.web.xml");
+        str = props.getProperty("quickstart.web.xml");
         if (str != null)
         {
             webApp.setQuickStartWebDescriptor(Resource.newResource(new File(str)));
@@ -127,16 +137,16 @@ public class Starter
         }
         
         // - the tmp directory
-        str = (String)props.getProperty("tmp.dir");
+        str = props.getProperty("tmp.dir");
         if (str != null)
             webApp.setTempDirectory(new File(str.trim()));
 
-        str = (String)props.getProperty("tmp.dir.persist");
+        str = props.getProperty("tmp.dir.persist");
         if (str != null)
             webApp.setPersistTempDirectory(Boolean.valueOf(str));
         
         //Get the calculated base dirs which includes the overlays
-        str = (String)props.getProperty("base.dirs");
+        str = props.getProperty("base.dirs");
         if (str != null && !"".equals(str.trim()))
         {
             ResourceCollection bases = new ResourceCollection(StringUtil.csvSplit(str));
@@ -145,21 +155,20 @@ public class Starter
         }     
 
         // - the equivalent of web-inf classes
-        str = (String)props.getProperty("classes.dir");
+        str = props.getProperty("classes.dir");
         if (str != null && !"".equals(str.trim()))
         {
             webApp.setClasses(new File(str));
         }
         
-        str = (String)props.getProperty("testClasses.dir"); 
+        str = props.getProperty("testClasses.dir");
         if (str != null && !"".equals(str.trim()))
         {
             webApp.setTestClasses(new File(str));
         }
 
-
         // - the equivalent of web-inf lib
-        str = (String)props.getProperty("lib.jars");
+        str = props.getProperty("lib.jars");
         if (str != null && !"".equals(str.trim()))
         {
             List<File> jars = new ArrayList<File>();
@@ -167,6 +176,15 @@ public class Starter
             for (int j=0; names != null && j < names.length; j++)
                 jars.add(new File(names[j].trim()));
             webApp.setWebInfLib(jars);
+        }
+
+        str = props.getProperty( "projects.classes.dir" );
+        if (str != null && !"".equals(str.trim()))
+        {
+            List<File> classesDirectories = //
+                Arrays.stream(str.split( Pattern.quote("|") )) //
+                    .map( s -> Paths.get( s).toFile() ).collect( Collectors.toList() );
+            webApp.getWebInfLib().addAll( classesDirectories );
         }
         
         //set up the webapp from the context xml file provided

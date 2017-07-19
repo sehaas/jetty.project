@@ -43,11 +43,14 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.util.FileUtils;
 import org.eclipse.jetty.security.LoginService;
+import org.eclipse.jetty.server.NetworkConnector;
 import org.eclipse.jetty.server.RequestLog;
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.ShutdownMonitor;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
@@ -280,10 +283,7 @@ public abstract class AbstractJettyMojo extends AbstractMojo
     protected Thread consoleScanner;
     
     protected ServerSupport serverSupport;
-    
-    
-    
-    
+
     /**
      * <p>
      * Determines whether or not the server blocks when started. The default
@@ -295,8 +295,9 @@ public abstract class AbstractJettyMojo extends AbstractMojo
      * If true, the server will not block the execution of subsequent code. This
      * is the behaviour of the jetty:start and default behaviour of the jetty:deploy goals.
      * </p>
+     * @parameter  default-value="false"
      */
-    protected boolean nonblocking = false;
+    protected boolean nonBlocking = false;
       
     
     public abstract void restartWebApp(boolean reconfigureScanner) throws Exception;
@@ -437,11 +438,13 @@ public abstract class AbstractJettyMojo extends AbstractMojo
             // if a <httpConnector> was specified in the pom, use it
             if (httpConnector != null)
             {
+
                 // check that its port was set
                 if (httpConnector.getPort() <= 0)
                 {
                     //use any jetty.http.port settings provided
-                    String tmp = System.getProperty(MavenServerConnector.PORT_SYSPROPERTY, System.getProperty("jetty.port", MavenServerConnector.DEFAULT_PORT_STR));
+                    String tmp = System.getProperty(MavenServerConnector.PORT_SYSPROPERTY, //
+                                                    System.getProperty("jetty.port", MavenServerConnector.DEFAULT_PORT_STR));
                     httpConnector.setPort(Integer.parseInt(tmp.trim()));
                 }  
                 httpConnector.setServer(server);
@@ -467,7 +470,7 @@ public abstract class AbstractJettyMojo extends AbstractMojo
             // start Jetty
             this.server.start();
 
-            getLog().info("Started Jetty Server");
+            getLog().info( "Started Jetty Server" );
 
             if ( dumpOnStart )
             {
@@ -486,10 +489,11 @@ public abstract class AbstractJettyMojo extends AbstractMojo
             startConsoleScanner();
 
             // keep the thread going if not in daemon mode
-            if (!nonblocking )
+            if (!nonBlocking )
             {
                 server.join();
             }
+
         }
         catch (Exception e)
         {
@@ -497,7 +501,7 @@ public abstract class AbstractJettyMojo extends AbstractMojo
         }
         finally
         {
-            if (!nonblocking )
+            if (!nonBlocking )
             {
                 getLog().info("Jetty server exiting.");
             }            
@@ -512,7 +516,7 @@ public abstract class AbstractJettyMojo extends AbstractMojo
             ShutdownMonitor monitor = ShutdownMonitor.getInstance();
             monitor.setPort(stopPort);
             monitor.setKey(stopKey);
-            monitor.setExitVm(!nonblocking);
+            monitor.setExitVm(!nonBlocking );
         }
     }
 

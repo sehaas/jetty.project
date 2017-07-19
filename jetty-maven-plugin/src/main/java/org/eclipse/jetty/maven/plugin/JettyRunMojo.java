@@ -46,6 +46,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 
 /**
@@ -233,7 +235,7 @@ public class JettyRunMojo extends AbstractJettyMojo
         {
             getLog().info("Reload Mechanic: " + reload );
         }
-
+        getLog().info( "nonBlocking:" + nonBlocking );
 
         // check the classes to form a classpath with
         try
@@ -302,9 +304,15 @@ public class JettyRunMojo extends AbstractJettyMojo
        if (useTestScope && (testClassesDirectory != null))
            webApp.setTestClasses (testClassesDirectory);
 
-       webApp.getClassPathFiles().addAll( getDependencyProjects() );
+       List<File> dependencyProjects = getDependencyProjects();
+       webApp.getClassPathFiles().addAll( dependencyProjects );
+       List<Resource> dependencyResources = //
+           dependencyProjects.stream() //
+               .map( file -> Resource.newResource( file ) ) //
+               .collect( Collectors.toList() );
+       webApp.getMetaData().getContainerResources().addAll( dependencyResources ); // TODO ask OLamy about this, why are they container resources?
        webApp.setWebInfLib (getDependencyFiles());
-
+       webApp.getDependentProjects().addAll( dependencyResources );
 
        //if we have not already set web.xml location, need to set one up
        if (webApp.getDescriptor() == null)
@@ -348,7 +356,17 @@ public class JettyRunMojo extends AbstractJettyMojo
        getLog().info("Webapp directory = " + webAppSourceDirectory.getCanonicalPath());
     }
     
-    
+    private static File toFile(Resource resource)
+    {
+        try
+        {
+            return resource.getFile();
+        }
+        catch ( IOException e )
+        {
+            throw new RuntimeException( e.getMessage(), e );
+        }
+    }
 
     
     /** 
@@ -547,7 +565,7 @@ public class JettyRunMojo extends AbstractJettyMojo
      */
     private List<File> getDependencyFiles()
     {
-        List<File> dependencyFiles = new ArrayList<File>();
+        List<File> dependencyFiles = new ArrayList<>();
         for ( Iterator<Artifact> iter = projectArtifacts.iterator(); iter.hasNext(); )
         {
             Artifact artifact = iter.next();
@@ -557,6 +575,8 @@ public class JettyRunMojo extends AbstractJettyMojo
             {
                 continue;
             }
+            
+            //check if this dependency is in the reactor
             if (getProjectReferences( artifact, project )!=null)
             {
                 continue;
@@ -577,7 +597,7 @@ public class JettyRunMojo extends AbstractJettyMojo
 
     private List<File> getDependencyProjects()
     {
-        List<File> dependencyFiles = new ArrayList<File>();
+        List<File> dependencyFiles = new ArrayList<>();
         for ( Iterator<Artifact> iter = projectArtifacts.iterator(); iter.hasNext(); )
         {
             Artifact artifact = iter.next();
@@ -607,7 +627,7 @@ public class JettyRunMojo extends AbstractJettyMojo
     }
 
 
-    private MavenProject getProjectReferences( Artifact artifact, MavenProject project )
+    protected MavenProject getProjectReferences( Artifact artifact, MavenProject project )
     {
         if ( project.getProjectReferences() == null || project.getProjectReferences().isEmpty() )
         {
@@ -768,10 +788,10 @@ public class JettyRunMojo extends AbstractJettyMojo
         if (warArtifacts != null)
             return warArtifacts;       
         
-        warArtifacts = new ArrayList<Artifact>();
+        warArtifacts = new ArrayList<>();
         for ( Iterator<Artifact> iter = projectArtifacts.iterator(); iter.hasNext(); )
         {
-            Artifact artifact = (Artifact) iter.next(); 
+            Artifact artifact = iter.next();
             if (artifact.getType().equals("war") || artifact.getType().equals("zip"))
             {
                 try
@@ -854,6 +874,22 @@ public class JettyRunMojo extends AbstractJettyMojo
         {
             props.put("testClasses.dir", webApp.getTestClasses().getAbsolutePath());
         }
+
+
+        //project dependencies in reactor
+        if ( !webApp.getClassPathFiles().isEmpty() )
+        {
+            StringBuilder stringBuilder = new StringBuilder(); 
+            for ( File dependency : webApp.getClassPathFiles() )
+            {
+                if (dependency.isDirectory())
+                {   
+                    stringBuilder.append( dependency.getCanonicalPath() ).append( '|' );
+                }
+            }
+            props.put( "projects.classes.dir", stringBuilder.toString() );
+        }
+
 
         //web-inf lib
         List<File> deps = webApp.getWebInfLib();

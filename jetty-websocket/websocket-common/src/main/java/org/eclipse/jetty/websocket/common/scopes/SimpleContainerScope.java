@@ -18,6 +18,8 @@
 
 package org.eclipse.jetty.websocket.common.scopes;
 
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 
 import org.eclipse.jetty.io.ByteBufferPool;
@@ -33,8 +35,9 @@ public class SimpleContainerScope extends ContainerLifeCycle implements WebSocke
 {
     private final ByteBufferPool bufferPool;
     private final DecoratedObjectFactory objectFactory;
-    private final WebSocketPolicy policy;
+    private final WebSocketPolicy containerPolicy;
     private final Executor executor;
+    protected final List<WebSocketSession.Listener> listeners = new CopyOnWriteArrayList<>();
     private SslContextFactory sslContextFactory;
 
     public SimpleContainerScope(WebSocketPolicy policy)
@@ -50,14 +53,13 @@ public class SimpleContainerScope extends ContainerLifeCycle implements WebSocke
 
     public SimpleContainerScope(WebSocketPolicy policy, ByteBufferPool bufferPool, DecoratedObjectFactory objectFactory)
     {
-        this(policy, bufferPool, (Executor) null, objectFactory);
+        this(policy, bufferPool, null, objectFactory);
     }
-    
+
     public SimpleContainerScope(WebSocketPolicy policy, ByteBufferPool bufferPool, Executor executor, DecoratedObjectFactory objectFactory)
     {
-        this.policy = policy;
+        this.containerPolicy = policy;
         this.bufferPool = bufferPool;
-        
         if (objectFactory == null)
         {
             this.objectFactory = new DecoratedObjectFactory();
@@ -66,7 +68,7 @@ public class SimpleContainerScope extends ContainerLifeCycle implements WebSocke
         {
             this.objectFactory = objectFactory;
         }
-        
+
         if (executor == null)
         {
             QueuedThreadPool threadPool = new QueuedThreadPool();
@@ -80,18 +82,6 @@ public class SimpleContainerScope extends ContainerLifeCycle implements WebSocke
         {
             this.executor = executor;
         }
-    }
-
-    @Override
-    protected void doStart() throws Exception
-    {
-        super.doStart();
-    }
-
-    @Override
-    protected void doStop() throws Exception
-    {
-        super.doStop();
     }
 
     @Override
@@ -115,7 +105,7 @@ public class SimpleContainerScope extends ContainerLifeCycle implements WebSocke
     @Override
     public WebSocketPolicy getPolicy()
     {
-        return this.policy;
+        return this.containerPolicy;
     }
 
     @Override
@@ -128,7 +118,19 @@ public class SimpleContainerScope extends ContainerLifeCycle implements WebSocke
     {
         this.sslContextFactory = sslContextFactory;
     }
-    
+
+    @Override
+    public void addSessionListener(WebSocketSession.Listener listener)
+    {
+        this.listeners.add(listener);
+    }
+
+    @Override
+    public boolean removeSessionListener(WebSocketSession.Listener listener)
+    {
+        return this.listeners.remove(listener);
+    }
+
     @Override
     public void onSessionOpened(WebSocketSession session)
     {
