@@ -37,6 +37,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URL;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -304,15 +305,8 @@ public class JettyRunMojo extends AbstractJettyMojo
        if (useTestScope && (testClassesDirectory != null))
            webApp.setTestClasses (testClassesDirectory);
 
-       List<File> dependencyProjects = getDependencyProjects();
-       webApp.getClassPathFiles().addAll( dependencyProjects );
-       List<Resource> dependencyResources = //
-           dependencyProjects.stream() //
-               .map( file -> Resource.newResource( file ) ) //
-               .collect( Collectors.toList() );
-       webApp.getMetaData().getContainerResources().addAll( dependencyResources ); // TODO ask OLamy about this, why are they container resources?
-       webApp.setWebInfLib (getDependencyFiles());
-       webApp.getDependentProjects().addAll( dependencyResources );
+       webApp.setWebInfLib(getDependencyFiles());
+
 
        //if we have not already set web.xml location, need to set one up
        if (webApp.getDescriptor() == null)
@@ -575,10 +569,12 @@ public class JettyRunMojo extends AbstractJettyMojo
             {
                 continue;
             }
-            
-            //check if this dependency is in the reactor
-            if (getProjectReferences( artifact, project )!=null)
+            MavenProject mavenProject = getProjectReferences( artifact, project );
+            if (mavenProject != null)
             {
+                File projectPath = Paths.get(mavenProject.getBuild().getOutputDirectory()).toFile();
+                getLog().debug( "Adding project directory " + projectPath.toString() );
+                dependencyFiles.add( projectPath );
                 continue;
             }
 
@@ -594,38 +590,6 @@ public class JettyRunMojo extends AbstractJettyMojo
               
         return dependencyFiles; 
     }
-
-    private List<File> getDependencyProjects()
-    {
-        List<File> dependencyFiles = new ArrayList<>();
-        for ( Iterator<Artifact> iter = projectArtifacts.iterator(); iter.hasNext(); )
-        {
-            Artifact artifact = iter.next();
-
-            // Include runtime and compile time libraries, and possibly test libs too
-            if(artifact.getType().equals("war"))
-            {
-                continue;
-            }
-
-            if (Artifact.SCOPE_PROVIDED.equals(artifact.getScope()))
-                continue; //never add dependencies of scope=provided to the webapp's classpath (see also <useProvidedScope> param)
-
-            if (Artifact.SCOPE_TEST.equals(artifact.getScope()) && !useTestScope)
-                continue; //only add dependencies of scope=test if explicitly required
-
-            MavenProject mavenProject = getProjectReferences( artifact, project );
-            if (mavenProject != null)
-            {
-                dependencyFiles.add( Paths.get(mavenProject.getBuild().getOutputDirectory()).toFile() );
-                getLog().debug( "Adding project reference " + mavenProject.getBuild().getOutputDirectory()
-                                    + " for WEB-INF/classes " );
-            }
-        }
-
-        return dependencyFiles;
-    }
-
 
     protected MavenProject getProjectReferences( Artifact artifact, MavenProject project )
     {
