@@ -177,16 +177,6 @@ public class Starter
                 jars.add(new File(names[j].trim()));
             webApp.setWebInfLib(jars);
         }
-
-        str = props.getProperty( "projects.classes.dir" );
-        if (str != null && !"".equals(str.trim()))
-        {
-            List<File> classesDirectories = //
-                Arrays.stream(str.split( Pattern.quote("|") )) //
-                    .map( s -> Paths.get( s).toFile() ).collect( Collectors.toList() );
-            webApp.getWebInfLib().addAll( classesDirectories );
-        }
-        
         //set up the webapp from the context xml file provided
         //NOTE: just like jetty:run mojo this means that the context file can
         //potentially override settings made in the pom. Ideally, we'd like

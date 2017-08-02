@@ -840,21 +840,6 @@ public class JettyRunMojo extends AbstractJettyMojo
         }
 
 
-        //project dependencies in reactor
-        if ( webApp.getClassPathFiles() != null && !webApp.getClassPathFiles().isEmpty() )
-        {
-            StringBuilder stringBuilder = new StringBuilder(); 
-            for ( File dependency : webApp.getClassPathFiles() )
-            {
-                if (dependency.isDirectory())
-                {   
-                    stringBuilder.append( dependency.getCanonicalPath() ).append( '|' );
-                }
-            }
-            props.put( "projects.classes.dir", stringBuilder.toString() );
-        }
-
-
         //web-inf lib
         List<File> deps = webApp.getWebInfLib();
         StringBuffer strbuff = new StringBuffer();
