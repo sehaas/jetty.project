@@ -21,11 +21,19 @@ package org.eclipse.jetty.maven.plugin;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileVisitOption;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 
 import org.apache.maven.artifact.Artifact;
@@ -216,39 +224,74 @@ public class JettyRunWithDistro extends JettyRunMojo
             throw new IllegalStateException(jettyBase.getAbsolutePath() +" does not exist");
         
         targetBase = new File(target, "jetty-base");
-        Path basePath = targetBase.toPath();
+        Path targetBasePath = targetBase.toPath();
+        Path jettyBasePath = jettyBase.toPath();
         
-        if (targetBase.exists())
+        if (Files.exists(targetBasePath))
             IO.delete(targetBase);
         
         targetBase.mkdirs();
         
         if (jettyBase != null)
         {
-            //copy the existing jetty base, but remove the deployer as we will be doing the
-            //deployment instead
-            IO.copyDir(jettyBase, targetBase);
-            Path deployIni = basePath.resolve("start.d/deploy.ini");
-            if (Files.exists(deployIni))
-                Files.delete(deployIni);
+            //copy the existing jetty base, but skip the deployer and the context xml file
+            //if there is one
+            Files.walkFileTree(jettyBasePath,EnumSet.of(FileVisitOption.FOLLOW_LINKS), 
+                               Integer.MAX_VALUE,
+                               new SimpleFileVisitor<Path>() 
+            {
+                /** 
+                 * @see java.nio.file.SimpleFileVisitor#preVisitDirectory(java.lang.Object, java.nio.file.attribute.BasicFileAttributes)
+                 */
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException
+                {
+                    Path targetDir = targetBasePath.resolve(jettyBasePath.relativize(dir));
+                    try
+                    {
+                        Files.copy(dir, targetDir);
+                    }
+                    catch (FileAlreadyExistsException e)
+                    {
+                        if (!Files.isDirectory(targetDir)) //ignore attempt to recreate dir
+                                throw e;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                /** 
+                 * @see java.nio.file.SimpleFileVisitor#visitFile(java.lang.Object, java.nio.file.attribute.BasicFileAttributes)
+                 */
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException
+                {
+                    if (contextXml != null && Files.isSameFile(Paths.get(contextXml), file))
+                        return FileVisitResult.CONTINUE; //skip copying the context xml file
+                    if (file.endsWith("deploy.ini") && file.getParent().endsWith("start.d"))
+                        return FileVisitResult.CONTINUE; //skip copying the deployer
+                    Files.copy(file, targetBasePath.resolve(jettyBasePath.relativize(file)));
+                    return FileVisitResult.CONTINUE;
+                }
+
+            });
         }
-        
+
         //make the jetty base structure
-        Path modulesPath = Files.createDirectories(basePath.resolve("modules"));
-        Path etcPath = Files.createDirectories(basePath.resolve("etc"));
-        Path libPath = Files.createDirectories(basePath.resolve("lib/maven"));
+        Path modulesPath = Files.createDirectories(targetBasePath.resolve("modules"));
+        Path etcPath = Files.createDirectories(targetBasePath.resolve("etc"));
+        Path libPath = Files.createDirectories(targetBasePath.resolve("lib/maven"));
 
         //copy in the jetty-maven-plugin jar
         URI thisJar = TypeUtil.getLocationOfClass(this.getClass());
         if (thisJar == null)
             throw new IllegalStateException("Can't find jar for jetty-maven-plugin");
-        
+
         try(InputStream jarStream = thisJar.toURL().openStream();
-            FileOutputStream fileStream =  new FileOutputStream(libPath.resolve("plugin.jar").toFile()))
+                FileOutputStream fileStream =  new FileOutputStream(libPath.resolve("plugin.jar").toFile()))
         {
             IO.copy(jarStream,fileStream);
         }
-        
+
         //copy in the maven.xml and maven.mod file
         try (InputStream mavenXmlStream = getClass().getClassLoader().getResourceAsStream("maven.xml"); 
                 FileOutputStream fileStream = new FileOutputStream(etcPath.resolve("maven.xml").toFile()))
@@ -262,7 +305,7 @@ public class JettyRunWithDistro extends JettyRunMojo
             IO.copy(mavenModStream, fileStream);
         }
         
-        createPropertiesFile(basePath, etcPath);
+        createPropertiesFile(targetBasePath, etcPath);
     }
     
     

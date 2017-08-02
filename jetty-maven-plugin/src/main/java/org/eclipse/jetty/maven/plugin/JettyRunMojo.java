@@ -841,7 +841,7 @@ public class JettyRunMojo extends AbstractJettyMojo
 
 
         //project dependencies in reactor
-        if ( !webApp.getClassPathFiles().isEmpty() )
+        if ( webApp.getClassPathFiles() != null && !webApp.getClassPathFiles().isEmpty() )
         {
             StringBuilder stringBuilder = new StringBuilder(); 
             for ( File dependency : webApp.getClassPathFiles() )
