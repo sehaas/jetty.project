@@ -20,6 +20,7 @@
 package org.eclipse.jetty.maven.plugin;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,15 +36,21 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.execution.MavenSession;
+import org.apache.maven.model.Dependency;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugin.descriptor.PluginDescriptor;
 import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.ProjectBuildingRequest;
 import org.apache.maven.shared.artifact.DefaultArtifactCoordinate;
 import org.apache.maven.shared.artifact.resolve.ArtifactResolver;
+import org.apache.maven.shared.artifact.resolve.ArtifactResolverException;
+import org.codehaus.plexus.component.repository.ComponentDependency;
 import org.eclipse.jetty.util.IO;
 import org.eclipse.jetty.util.TypeUtil;
 import org.eclipse.jetty.util.resource.JarResource;
@@ -62,6 +69,15 @@ public class JettyRunWithDistro extends JettyRunMojo
     
     public static final String JETTY_HOME_GROUPID = "org.eclipse.jetty";
     public static final String JETTY_HOME_ARTIFACTID = "jetty-home";
+    
+    
+    /**
+     * @parameter default-value="${plugin}"
+     * @readonly
+     * @required
+     */
+    protected PluginDescriptor plugin;
+    
     /**
      * The target directory
      * 
@@ -131,15 +147,50 @@ public class JettyRunWithDistro extends JettyRunMojo
  
     private File targetBase;
     
+    private List<Dependency> libExtJars;
+    
+    
+    
     
     // IDEAS:
-    // 2. put out a warning if pluginDependencies are configured (use a jetty-home and configure)
-    // 3. don't copy existing jetty-base/webapps because a context.xml will confuse the deployer - or
-    //    do copy webapps but if the contextXml file matches a file in webapps, don't copy that over
     // 4. try to make the maven.xml configure a JettyWebAppContext which uses helper classes to configure
     //    itself and apply the context.xml file: that way we can configure the normal jetty deployer
     // 5. try to use the scanner as normal and remake the properties and context.xml file to get the
     //    deployer to automatically redeploy it on changes.
+
+    /** 
+     * @see org.eclipse.jetty.maven.plugin.JettyRunMojo#execute()
+     */
+    @Override
+    public void execute() throws MojoExecutionException, MojoFailureException
+    {
+        List<Dependency> pdeps = plugin.getPlugin().getDependencies();
+        if (pdeps != null && !pdeps.isEmpty())
+        {
+            boolean warned = false;
+            for (Dependency d:pdeps)
+            {
+                if (d.getGroupId().equalsIgnoreCase("org.eclipse.jetty"))
+                {
+                    if (!warned)
+                    {
+                        getLog().warn("Jetty jars detected in <pluginDependencies>: use <modules> in <configuration> parameter instead to select appropriate jetty modules.");
+                        warned = true;
+                    }
+                }
+                else
+                {
+                    if (libExtJars == null)
+                        libExtJars = new ArrayList<>();
+                    libExtJars.add(d);
+                }
+            }
+
+        }
+
+        super.execute();
+    }
+
 
     /** 
      * @see org.eclipse.jetty.maven.plugin.AbstractJettyMojo#startJetty()
@@ -184,19 +235,7 @@ public class JettyRunWithDistro extends JettyRunMojo
         if (jettyHome == null)
         {
             //no jetty home, download from repo and unpack it. Get the same version as the plugin
-            DefaultArtifactCoordinate coordinate = new DefaultArtifactCoordinate();
-            coordinate.setGroupId( JETTY_HOME_GROUPID );
-            coordinate.setArtifactId( JETTY_HOME_ARTIFACTID );
-            coordinate.setVersion( pluginVersion );
-            coordinate.setExtension( "zip" );
-
-            ProjectBuildingRequest buildingRequest =
-                new DefaultProjectBuildingRequest( session.getProjectBuildingRequest() );
-
-            buildingRequest.setRemoteRepositories( remoteRepositories );
-
-            Artifact jettyHomeArtifact = artifactResolver.resolveArtifact( buildingRequest, coordinate ).getArtifact();
-
+            Artifact jettyHomeArtifact = resolveArtifact(JETTY_HOME_GROUPID, JETTY_HOME_ARTIFACTID, pluginVersion, "zip");      
             JarResource res = (JarResource) JarResource.newJarResource(Resource.newResource(jettyHomeArtifact.getFile()));
             res.copyTo(target);
             //zip will unpack to target/jetty-home-<VERSION>
@@ -212,6 +251,32 @@ public class JettyRunWithDistro extends JettyRunMojo
     }
 
 
+    /**
+     * Resolve an Artifact from remote repo if necessary.
+     * 
+     * @param groupId the groupid of the artifact
+     * @param artifactId the artifactId of the artifact
+     * @param version the version of the artifact
+     * @param extension the extension type of the artifact eg "zip", "jar"
+     * @return the artifact from the local or remote repo
+     * @throws ArtifactResolverException
+     */
+    public Artifact resolveArtifact (String groupId, String artifactId, String version, String extension)
+    throws ArtifactResolverException
+    {
+        DefaultArtifactCoordinate coordinate = new DefaultArtifactCoordinate();
+        coordinate.setGroupId(groupId);
+        coordinate.setArtifactId(artifactId);
+        coordinate.setVersion(version);
+        coordinate.setExtension(extension);
+
+        ProjectBuildingRequest buildingRequest =
+            new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
+
+        buildingRequest.setRemoteRepositories(remoteRepositories);
+
+        return artifactResolver.resolveArtifact( buildingRequest, coordinate ).getArtifact();
+    }
 
     /**
      * Create or configure a jetty base.
@@ -279,7 +344,8 @@ public class JettyRunWithDistro extends JettyRunMojo
         //make the jetty base structure
         Path modulesPath = Files.createDirectories(targetBasePath.resolve("modules"));
         Path etcPath = Files.createDirectories(targetBasePath.resolve("etc"));
-        Path libPath = Files.createDirectories(targetBasePath.resolve("lib/maven"));
+        Path libPath = Files.createDirectories(targetBasePath.resolve("lib"));
+        Path mavenLibPath = Files.createDirectories(libPath.resolve("maven"));
 
         //copy in the jetty-maven-plugin jar
         URI thisJar = TypeUtil.getLocationOfClass(this.getClass());
@@ -287,14 +353,14 @@ public class JettyRunWithDistro extends JettyRunMojo
             throw new IllegalStateException("Can't find jar for jetty-maven-plugin");
 
         try(InputStream jarStream = thisJar.toURL().openStream();
-                FileOutputStream fileStream =  new FileOutputStream(libPath.resolve("plugin.jar").toFile()))
+            FileOutputStream fileStream =  new FileOutputStream(mavenLibPath.resolve("plugin.jar").toFile()))
         {
             IO.copy(jarStream,fileStream);
         }
 
         //copy in the maven.xml and maven.mod file
         try (InputStream mavenXmlStream = getClass().getClassLoader().getResourceAsStream("maven.xml"); 
-                FileOutputStream fileStream = new FileOutputStream(etcPath.resolve("maven.xml").toFile()))
+             FileOutputStream fileStream = new FileOutputStream(etcPath.resolve("maven.xml").toFile()))
         {
             IO.copy(mavenXmlStream, fileStream);
         }
@@ -305,6 +371,22 @@ public class JettyRunWithDistro extends JettyRunMojo
             IO.copy(mavenModStream, fileStream);
         }
         
+        //if there were plugin dependencies, copy them into lib/ext
+        if (libExtJars != null && !libExtJars.isEmpty())
+        {
+            Path libExtPath = Files.createDirectories(libPath.resolve("ext"));
+            for (Dependency d:libExtJars)
+            {
+                Artifact a = resolveArtifact(d.getGroupId(), d.getArtifactId(), d.getVersion(), d.getType());
+                try (InputStream jarStream = new FileInputStream(a.getFile());
+                    FileOutputStream fileStream = new FileOutputStream(libExtPath.resolve(d.getGroupId()+"."+d.getArtifactId()+"-"+d.getVersion()+"."+d.getType()).toFile()))
+                {
+                    IO.copy(jarStream, fileStream);
+                }
+            }
+        }
+        
+        //create properties file that describes the webapp
         createPropertiesFile(targetBasePath, etcPath);
     }
     
@@ -342,11 +424,15 @@ public class JettyRunWithDistro extends JettyRunMojo
         if (modules != null)
         {
             for (String m:modules)
+            {
+                if (tmp.indexOf(m) < 0)
                 tmp.append(","+m);
+            }
         }
+        if (libExtJars != null && !libExtJars.isEmpty() && tmp.indexOf("ext") < 0)
+            tmp.append(",ext");
         tmp.append(",maven");
-   
-        
+         
         cmd.add(tmp.toString());
         
         
