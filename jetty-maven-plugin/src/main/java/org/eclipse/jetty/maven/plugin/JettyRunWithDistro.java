@@ -36,7 +36,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -50,7 +49,6 @@ import org.apache.maven.project.ProjectBuildingRequest;
 import org.apache.maven.shared.artifact.DefaultArtifactCoordinate;
 import org.apache.maven.shared.artifact.resolve.ArtifactResolver;
 import org.apache.maven.shared.artifact.resolve.ArtifactResolverException;
-import org.codehaus.plexus.component.repository.ComponentDependency;
 import org.eclipse.jetty.util.IO;
 import org.eclipse.jetty.util.TypeUtil;
 import org.eclipse.jetty.util.resource.JarResource;
@@ -72,6 +70,8 @@ public class JettyRunWithDistro extends JettyRunMojo
     
     
     /**
+     * This plugin
+     * 
      * @parameter default-value="${plugin}"
      * @readonly
      * @required
@@ -153,8 +153,6 @@ public class JettyRunWithDistro extends JettyRunMojo
     
     
     // IDEAS:
-    // 4. try to make the maven.xml configure a JettyWebAppContext which uses helper classes to configure
-    //    itself and apply the context.xml file: that way we can configure the normal jetty deployer
     // 5. try to use the scanner as normal and remake the properties and context.xml file to get the
     //    deployer to automatically redeploy it on changes.
 
@@ -198,7 +196,8 @@ public class JettyRunWithDistro extends JettyRunMojo
     @Override
     public void startJetty() throws MojoExecutionException
     {
-        //don't start jetty locally, set up enough configuration to fork a jetty distro
+        //don't start jetty locally, set up enough configuration to run a new process
+        //with a jetty distro
         try
         {
             printSystemProperties();
@@ -209,9 +208,10 @@ public class JettyRunWithDistro extends JettyRunMojo
             //ensure config of the webapp based on settings in plugin
             configureWebApplication();
             
-            //configure jetty.base
+            //configure jetty base
             configureJettyBase();
             
+            //create the command to run the new process
             ProcessBuilder command = configureCommand();
             Process process = command.start();
             process.waitFor();
@@ -290,8 +290,6 @@ public class JettyRunWithDistro extends JettyRunMojo
         
         targetBase = new File(target, "jetty-base");
         Path targetBasePath = targetBase.toPath();
-        Path jettyBasePath = jettyBase.toPath();
-        
         if (Files.exists(targetBasePath))
             IO.delete(targetBase);
         
@@ -299,8 +297,9 @@ public class JettyRunWithDistro extends JettyRunMojo
         
         if (jettyBase != null)
         {
-            //copy the existing jetty base, but skip the deployer and the context xml file
-            //if there is one
+            Path jettyBasePath = jettyBase.toPath();
+            
+            //copy the existing jetty base
             Files.walkFileTree(jettyBasePath,EnumSet.of(FileVisitOption.FOLLOW_LINKS), 
                                Integer.MAX_VALUE,
                                new SimpleFileVisitor<Path>() 
@@ -332,8 +331,6 @@ public class JettyRunWithDistro extends JettyRunMojo
                 {
                     if (contextXml != null && Files.isSameFile(Paths.get(contextXml), file))
                         return FileVisitResult.CONTINUE; //skip copying the context xml file
-                    if (file.endsWith("deploy.ini") && file.getParent().endsWith("start.d"))
-                        return FileVisitResult.CONTINUE; //skip copying the deployer
                     Files.copy(file, targetBasePath.resolve(jettyBasePath.relativize(file)));
                     return FileVisitResult.CONTINUE;
                 }
@@ -345,6 +342,7 @@ public class JettyRunWithDistro extends JettyRunMojo
         Path modulesPath = Files.createDirectories(targetBasePath.resolve("modules"));
         Path etcPath = Files.createDirectories(targetBasePath.resolve("etc"));
         Path libPath = Files.createDirectories(targetBasePath.resolve("lib"));
+        Path webappPath = Files.createDirectories(targetBasePath.resolve("webapps"));
         Path mavenLibPath = Files.createDirectories(libPath.resolve("maven"));
 
         //copy in the jetty-maven-plugin jar
@@ -358,13 +356,14 @@ public class JettyRunWithDistro extends JettyRunMojo
             IO.copy(jarStream,fileStream);
         }
 
-        //copy in the maven.xml and maven.mod file
+        //copy in the maven.xml webapp file
         try (InputStream mavenXmlStream = getClass().getClassLoader().getResourceAsStream("maven.xml"); 
-             FileOutputStream fileStream = new FileOutputStream(etcPath.resolve("maven.xml").toFile()))
+             FileOutputStream fileStream = new FileOutputStream(webappPath.resolve("maven.xml").toFile()))
         {
             IO.copy(mavenXmlStream, fileStream);
         }
-
+        
+        //copy in the maven.mod file
         try (InputStream mavenModStream = getClass().getClassLoader().getResourceAsStream("maven.mod");
                 FileOutputStream fileStream = new FileOutputStream(modulesPath.resolve("maven.mod").toFile()))
         {
@@ -387,22 +386,20 @@ public class JettyRunWithDistro extends JettyRunMojo
         }
         
         //create properties file that describes the webapp
-        createPropertiesFile(targetBasePath, etcPath);
+        createPropertiesFile(etcPath.resolve("maven.props").toFile());
     }
     
     
     /**
      * Convert webapp config to properties
      * 
-     * @param basePath
-     * @param etcPath
+     * @param file the file to place the properties into
      * @throws Exception
      */
-    public void createPropertiesFile (Path basePath, Path etcPath)
+    public void createPropertiesFile (File file)
     throws Exception
     {
-        File propsFile = Files.createFile(etcPath.resolve("maven.props")).toFile();
-        convertWebAppToProperties(propsFile);
+        WebAppPropertyConverter.toProperties(webApp, file, contextXml);
     }
     
     
@@ -420,7 +417,7 @@ public class JettyRunWithDistro extends JettyRunMojo
         cmd.add(new File(jettyHome, "start.jar").getAbsolutePath());
         StringBuilder tmp = new StringBuilder();
         tmp.append("--module=");
-        tmp.append("server,http,webapp");
+        tmp.append("server,http,webapp,deploy");
         if (modules != null)
         {
             for (String m:modules)
@@ -444,6 +441,7 @@ public class JettyRunWithDistro extends JettyRunMojo
             cmd.add(tmp.toString());
             
         }
+        
         ProcessBuilder builder = new ProcessBuilder(cmd);
         builder.directory(targetBase);
         builder.inheritIO();

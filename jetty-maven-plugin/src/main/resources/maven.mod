@@ -8,6 +8,3 @@ annotations
 
 [lib]
 lib/maven/**.jar
-
-[xml]
-etc/maven.xml

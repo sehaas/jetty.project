@@ -458,7 +458,7 @@ public class JettyRunForkedMojo extends JettyRunMojo
         {   
             //work out the configuration based on what is configured in the pom
             File propsFile = new File (target, "fork.props");
-            convertWebAppToProperties(propsFile);
+            WebAppPropertyConverter.toProperties(webApp, propsFile, contextXml);
             return propsFile;
         }
         catch (Exception e)

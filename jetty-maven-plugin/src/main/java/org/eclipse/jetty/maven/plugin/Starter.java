@@ -19,21 +19,8 @@
 package org.eclipse.jetty.maven.plugin;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
-import java.net.URL;
-import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Enumeration;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Properties;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
@@ -43,8 +30,6 @@ import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.resource.Resource;
-import org.eclipse.jetty.util.resource.ResourceCollection;
-import org.eclipse.jetty.xml.XmlConfiguration;
 
 
 
@@ -63,7 +48,7 @@ public class Starter
     
     private int stopPort=0;
     private String stopKey=null;
-    private Properties props;
+    private File propsFile;
     private String token;
 
 
@@ -98,8 +83,6 @@ public class Starter
                 webApp.setQuickStartWebDescriptor(Resource.newResource(qs));
         }
         
-
-
         ServerSupport.addWebApplication(server, webApp);
 
         if(stopPort>0 && stopKey!=null)
@@ -114,82 +97,11 @@ public class Starter
     public void configureWebApp ()
     throws Exception
     {
-        if (props == null)
+        if (propsFile == null)
             return;
         
-        //apply a properties file that defines the things that we configure in the jetty:run plugin:
-        // - the context path
-        String str = props.getProperty("context.path");
-        if (str != null)
-            webApp.setContextPath(str);
-        
-        
-        // - web.xml
-        str = props.getProperty("web.xml");
-        if (str != null)
-            webApp.setDescriptor(str); 
-        
-        str = props.getProperty("quickstart.web.xml");
-        if (str != null)
-        {
-            webApp.setQuickStartWebDescriptor(Resource.newResource(new File(str)));
-            webApp.setConfigurationClasses(JettyWebAppContext.QUICKSTART_CONFIGURATION_CLASSES);
-        }
-        
-        // - the tmp directory
-        str = props.getProperty("tmp.dir");
-        if (str != null)
-            webApp.setTempDirectory(new File(str.trim()));
-
-        str = props.getProperty("tmp.dir.persist");
-        if (str != null)
-            webApp.setPersistTempDirectory(Boolean.valueOf(str));
-        
-        //Get the calculated base dirs which includes the overlays
-        str = props.getProperty("base.dirs");
-        if (str != null && !"".equals(str.trim()))
-        {
-            ResourceCollection bases = new ResourceCollection(StringUtil.csvSplit(str));
-            webApp.setWar(null);
-            webApp.setBaseResource(bases);
-        }     
-
-        // - the equivalent of web-inf classes
-        str = props.getProperty("classes.dir");
-        if (str != null && !"".equals(str.trim()))
-        {
-            webApp.setClasses(new File(str));
-        }
-        
-        str = props.getProperty("testClasses.dir");
-        if (str != null && !"".equals(str.trim()))
-        {
-            webApp.setTestClasses(new File(str));
-        }
-
-        // - the equivalent of web-inf lib
-        str = props.getProperty("lib.jars");
-        if (str != null && !"".equals(str.trim()))
-        {
-            List<File> jars = new ArrayList<File>();
-            String[] names = StringUtil.csvSplit(str);
-            for (int j=0; names != null && j < names.length; j++)
-                jars.add(new File(names[j].trim()));
-            webApp.setWebInfLib(jars);
-        }
-        //set up the webapp from the context xml file provided
-        //NOTE: just like jetty:run mojo this means that the context file can
-        //potentially override settings made in the pom. Ideally, we'd like
-        //the pom to override the context xml file, but as the other mojos all
-        //configure a WebAppContext in the pom (the <webApp> element), it is 
-        //already configured by the time the context xml file is applied.
-        str = (String)props.getProperty("context.xml");
-        if (!StringUtil.isBlank(str))
-        {
-            XmlConfiguration xmlConfiguration = new XmlConfiguration(Resource.newResource(str).getURI().toURL());
-            xmlConfiguration.getIdMap().put("Server",server);
-            xmlConfiguration.configure(webApp);
-        }
+        //apply a properties file that defines the things that we configure in the jetty:run plugin
+        WebAppPropertyConverter.fromProperties(webApp, propsFile, server);
     }
 
     public void getConfiguration (String[] args)
@@ -219,12 +131,7 @@ public class Starter
             //--props
             if ("--props".equals(args[i]))
             {
-                File f = new File(args[++i].trim());
-                props = new Properties();
-                try (InputStream in = new FileInputStream(f))
-                {
-                    props.load(in);
-                }
+                propsFile = new File(args[++i].trim());
             }
             
             //--token
@@ -307,6 +214,9 @@ public class Starter
         return list;
     }
     
+    /**
+     * @param args
+     */
     public static final void main(String[] args)
     {
         if (args == null)

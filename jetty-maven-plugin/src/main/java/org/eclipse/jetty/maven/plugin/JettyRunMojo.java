@@ -18,7 +18,18 @@
 
 package org.eclipse.jetty.maven.plugin;
 
-import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -27,28 +38,10 @@ import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.util.StringUtils;
 import org.eclipse.jetty.util.PathWatcher;
 import org.eclipse.jetty.util.PathWatcher.PathWatchEvent;
-import org.eclipse.jetty.util.resource.Resource;
-import org.eclipse.jetty.webapp.WebAppContext;
-import org.eclipse.jetty.util.resource.ResourceCollection;
 import org.eclipse.jetty.util.resource.JarResource;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.URL;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Properties;
-import java.util.Set;
-import java.util.stream.Collector;
-import java.util.stream.Collectors;
+import org.eclipse.jetty.util.resource.Resource;
+import org.eclipse.jetty.util.resource.ResourceCollection;
+import org.eclipse.jetty.webapp.WebAppContext;
 
 
 /**
@@ -677,19 +670,16 @@ public class JettyRunMojo extends AbstractJettyMojo
             Resource unpacked = unpackOverlay(o);
             //_unpackedOverlayResources.add(unpacked); //remember the unpacked overlays for later so we can delete the tmp files
             resourceBaseCollection.add(unpacked); //add in the selectively unpacked overlay in the correct order to the webapps resource base
-            System.err.println("Adding "+unpacked+" to resource base list");
         }
 
         if (!resourceBaseCollection.contains(webApp.getBaseResource()) && webApp.getBaseResource().exists())
         {
             if (webApp.getBaseAppFirst())
             {
-                System.err.println("Adding virtual project first in resource base list");
                 resourceBaseCollection.add(0, webApp.getBaseResource());
             }
             else
             {
-                System.err.println("Adding virtual project last in resource base list");
                 resourceBaseCollection.add(webApp.getBaseResource());
             }
         }
@@ -701,9 +691,7 @@ public class JettyRunMojo extends AbstractJettyMojo
 
     public  Resource unpackOverlay (Overlay overlay)
     throws IOException
-    {
-        System.err.println("Unpacking overlay: " + overlay);
-        
+    {        
         if (overlay.getResource() == null)
             return null; //nothing to unpack
    
@@ -719,29 +707,21 @@ public class JettyRunMojo extends AbstractJettyMojo
         //name = name+(++COUNTER); //add some digits to ensure uniqueness
         File overlaysDir = new File (project.getBuild().getDirectory(), "jetty_overlays");
         File dir = new File(overlaysDir, name);
-        System.err.println(" unpack dir exists="+dir.exists());
 
         //if specified targetPath, unpack to that subdir instead
         File unpackDir = dir;
         if (overlay.getConfig() != null && overlay.getConfig().getTargetPath() != null)
             unpackDir = new File (dir, overlay.getConfig().getTargetPath());
 
-        System.err.println("Unpackdir="+unpackDir+" exists="+unpackDir.exists());
-        System.err.println("Overlay resource="+overlay.getResource()+" exists="+overlay.getResource().exists()+" is jarresource="+(overlay.getResource() instanceof JarResource));
         //only unpack if the overlay is newer
         if (!unpackDir.exists() || (overlay.getResource().lastModified() > unpackDir.lastModified()))
         {
             boolean made=unpackDir.mkdirs();
-            System.err.println("Unpack dir="+unpackDir.getAbsolutePath()+" exists now="+unpackDir.exists());
-            System.err.println("Unpacking! made="+made);
             overlay.getResource().copyTo(unpackDir);
         }
 
         //use top level of unpacked content
-        Resource unpackedOverlay = Resource.newResource(dir.getCanonicalPath());
-
-        System.err.println("Unpacked overlay: "+overlay+" to "+unpackedOverlay);
-        return  unpackedOverlay;
+       return Resource.newResource(dir.getCanonicalPath());
     }
     
     /**
@@ -786,108 +766,5 @@ public class JettyRunMojo extends AbstractJettyMojo
         }
         
         return null;
-    }
-    
-    public void convertWebAppToProperties (File propsFile)
-    throws Exception
-    {
-        //work out the configuration based on what is configured in the pom
-        if (propsFile.exists())
-            propsFile.delete();   
-
-        propsFile.createNewFile();
-
-        Properties props = new Properties();
-        //web.xml
-        if (webApp.getDescriptor() != null)
-        {
-            props.put("web.xml", webApp.getDescriptor());
-        }
-        
-        if (webApp.getQuickStartWebDescriptor() != null)
-        {
-            props.put("quickstart.web.xml", webApp.getQuickStartWebDescriptor().getFile().getAbsolutePath());
-        }
-
-        //sort out the context path
-        if (webApp.getContextPath() != null)
-        {
-            props.put("context.path", webApp.getContextPath());       
-        }
-
-        //tmp dir
-        props.put("tmp.dir", webApp.getTempDirectory().getAbsolutePath());
-        //props.put("tmp.dir.persist", Boolean.toString(originalPersistTemp));
-        props.put("tmp.dir.persist", Boolean.toString(webApp.isPersistTempDirectory()));
-
-        //send over the calculated resource bases that includes unpacked overlays
-        Resource baseResource = webApp.getBaseResource();
-        if (baseResource instanceof ResourceCollection)
-            props.put("base.dirs", toCSV(((ResourceCollection)webApp.getBaseResource()).getResources()));
-        else
-            props.put("base.dirs", webApp.getBaseResource().toString());
-
-
-        //web-inf classes
-        if (webApp.getClasses() != null)
-        {
-            props.put("classes.dir",webApp.getClasses().getAbsolutePath());
-        }
-        
-        if (useTestScope && webApp.getTestClasses() != null)
-        {
-            props.put("testClasses.dir", webApp.getTestClasses().getAbsolutePath());
-        }
-
-
-        //web-inf lib
-        List<File> deps = webApp.getWebInfLib();
-        StringBuffer strbuff = new StringBuffer();
-        for (int i=0; i<deps.size(); i++)
-        {
-            File d = deps.get(i);
-            strbuff.append(d.getAbsolutePath());
-            if (i < deps.size()-1)
-                strbuff.append(",");
-        }
-        props.put("lib.jars", strbuff.toString()); 
-        
-        //context xml to apply
-        if (contextXml != null)
-            props.put("context.xml", contextXml);
-        
-        try (OutputStream out = new BufferedOutputStream(new FileOutputStream(propsFile)))
-        {
-            props.store(out, "properties for forked webapp");
-        }
-    }
-    
-
-    private String toCSV (List<String> strings)
-    {
-        if (strings == null)
-            return "";
-        StringBuffer strbuff = new StringBuffer();
-        Iterator<String> itor = strings.iterator();
-        while (itor.hasNext())
-        {
-            strbuff.append(itor.next());
-            if (itor.hasNext())
-                strbuff.append(",");
-        }
-        return strbuff.toString();
-    }
-
-    private String toCSV (Resource[] resources)
-    {
-        StringBuffer rb = new StringBuffer();
-
-        for (Resource r:resources)
-        {
-            if (rb.length() > 0) rb.append(",");
-            rb.append(r.toString());
-        }        
-
-        return rb.toString();
     }
 }
