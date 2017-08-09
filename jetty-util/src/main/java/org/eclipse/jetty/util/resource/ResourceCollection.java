@@ -434,13 +434,8 @@ public class ResourceCollection extends Resource
         HashSet<String> set = new HashSet<String>();
         for(Resource r : _resources)
         {
-            System.err.println("Listing "+r);
-            String[] list = r.list();
-            if (list != null)
-            {
-                for(String s : list)
-                    set.add(s);
-            }
+            for(String s : r.list())
+                set.add(s);
         }
         String[] result=set.toArray(new String[set.size()]);
         Arrays.sort(result);
