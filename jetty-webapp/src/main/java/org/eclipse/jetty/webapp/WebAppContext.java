@@ -1030,7 +1030,6 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
         
         if (_configurationClasses.size()==0) {
             _configurationClasses.addAll(Configuration.ClassList.serverDefault(getServer()));
-            System.err.println("LOAD CONFIGS:"+Configuration.ClassList.serverDefault(getServer()));
         }
         for (String configClass : _configurationClasses)
             _configurations.add((Configuration)Loader.loadClass(configClass).newInstance());
@@ -1086,7 +1085,6 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
      */
     public void setConfigurationClasses(String[] configurations)
     {
-        System.err.println("SET CONFIGS CALLED"+ Arrays.toString(configurations));
         if (isStarted())
             throw new IllegalStateException();
         _configurationClasses.clear();

@@ -206,11 +206,9 @@ public interface Configuration
                 {
                     
                     String cc=iter.next();
-                    System.err.println("Checking "+cc+" as "+replaceClass+" same="+replaceClass.equals(cc));
                     if (replaceClass.equals(cc))
                     {
                         iter.set(configClass);
-                        System.err.println("REPLACED!"+get(0));
                         return;
                     }
                 }
