@@ -55,14 +55,14 @@ import org.eclipse.jetty.util.resource.JarResource;
 import org.eclipse.jetty.util.resource.Resource;
 
 /**
- * JettyRunWithDistro
+ * JettyRunDistro
  *
  * @goal run-distro
  * @requiresDependencyResolution test
  * @execute phase="test-compile"
  * @description Runs unassembled webapp in a locally installed jetty distro
  */
-public class JettyRunWithDistro extends JettyRunMojo
+public class JettyRunDistro extends JettyRunMojo
 {
     
     public static final String JETTY_HOME_GROUPID = "org.eclipse.jetty";
@@ -144,6 +144,11 @@ public class JettyRunWithDistro extends JettyRunMojo
     private String pluginVersion;
     
     
+    /**
+     * @parameter default-value="true"
+     */
+    private boolean waitForChild;
+    
  
     private File targetBase;
     
@@ -207,14 +212,28 @@ public class JettyRunWithDistro extends JettyRunMojo
 
             //ensure config of the webapp based on settings in plugin
             configureWebApplication();
-            
+
             //configure jetty base
             configureJettyBase();
-            
+
             //create the command to run the new process
             ProcessBuilder command = configureCommand();
+ 
+
+            if (waitForChild)
+            {
+                command.inheritIO();
+            }
+            else
+            {
+                command.redirectErrorStream(true);
+                command.redirectOutput(new File(target, "jetty.out"));
+            }
+            
             Process process = command.start();
-            process.waitFor();
+            
+            if (waitForChild)
+                process.waitFor();
         }
         catch (Exception e)
         {
@@ -415,6 +434,10 @@ public class JettyRunWithDistro extends JettyRunMojo
         cmd.add("java");
         cmd.add("-jar");
         cmd.add(new File(jettyHome, "start.jar").getAbsolutePath());
+        cmd.add("-DSTOP.PORT="+stopPort);
+        if (stopKey != null)
+            cmd.add("-DSTOP.KEY="+stopKey);
+        
         StringBuilder tmp = new StringBuilder();
         tmp.append("--module=");
         tmp.append("server,http,webapp,deploy");
@@ -441,11 +464,9 @@ public class JettyRunWithDistro extends JettyRunMojo
             cmd.add(tmp.toString());
             
         }
-        
+
         ProcessBuilder builder = new ProcessBuilder(cmd);
         builder.directory(targetBase);
-        builder.inheritIO();
-        
         return builder;
     }
     
