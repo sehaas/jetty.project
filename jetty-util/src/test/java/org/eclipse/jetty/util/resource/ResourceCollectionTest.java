@@ -19,6 +19,7 @@
 package org.eclipse.jetty.util.resource;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.BufferedReader;
@@ -30,6 +31,17 @@ import org.junit.Test;
 
 public class ResourceCollectionTest
 {
+    @Test
+    public void testList() throws Exception
+    {
+        Resource r1 = Resource.newResource("src/test/resources/org/eclipse/jetty/util/resource/one/dir/1.txt");
+        Resource r2 = Resource.newResource( "src/test/resources/org/eclipse/jetty/util/resource/two/dir");
+        ResourceCollection rc = new ResourceCollection();
+        rc.setResources(new Resource[] {r1,r2});
+        String[] list = rc.list();
+        assertNotNull(list);
+        assertEquals("2.txt", list[0]);
+    }
 
     @Test
     public void testMutlipleSources1() throws Exception
